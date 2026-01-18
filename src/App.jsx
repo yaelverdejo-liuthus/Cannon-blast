@@ -17,7 +17,7 @@ const COLORS = {
 const LEVELS = [
   { 
     id: 1, 
-    ammo: 7, 
+    ammo: 9, 
     name: "La Pirámide", 
     type: "pyramid", 
     starsThreshold: [3000, 6000, 8200] 
