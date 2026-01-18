@@ -38,11 +38,24 @@ const LEVELS = [
   }
 ];
 
-// --- GENERADOR DE SONIDOS (Web Audio API) ---
+// --- SISTEMA DE AUDIO OPTIMIZADO (SINGLETON) ---
+// Variable global para mantener un único contexto de audio
+let sharedAudioCtx = null;
+
+const initAudio = () => {
+  if (!sharedAudioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    sharedAudioCtx = new AudioContext();
+  }
+  if (sharedAudioCtx.state === 'suspended') {
+    sharedAudioCtx.resume();
+  }
+  return sharedAudioCtx;
+};
+
 const playSound = (type) => {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioContext();
+    const ctx = initAudio(); // Reutiliza el contexto existente
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
@@ -85,7 +98,7 @@ const playSound = (type) => {
       osc.stop(now + 0.6);
     }
   } catch (e) {
-    // Fallback silencioso
+    console.warn("Audio error:", e);
   }
 };
 
@@ -114,6 +127,9 @@ export default function CannonBlastGame() {
   // --- CONTROL DE PANTALLA Y ORIENTACIÓN ---
   
   const enterGameMode = () => {
+    // Inicializar audio con interacción de usuario para desbloquearlo en móviles
+    initAudio();
+
     const elem = document.documentElement;
     if (elem.requestFullscreen) {
       elem.requestFullscreen().catch(err => console.log("Fullscreen blocked:", err));
@@ -132,8 +148,6 @@ export default function CannonBlastGame() {
       if (canvas) {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        // Nota: No actualizamos width/height de 'game.current' aquí para no romper físicas en caliente.
-        // El resize ideal recargaría el nivel, pero para simplicidad visual solo ajustamos canvas.
       }
     };
     
@@ -157,7 +171,7 @@ export default function CannonBlastGame() {
   const game = useRef({
     width: 0,
     height: 0,
-    viewScale: 1, // Nuevo: Factor de escala para zoom
+    viewScale: 1, 
     isDragging: false,
     dragStart: { x: 0, y: 0 },
     cannonAngle: 0,
@@ -362,14 +376,10 @@ export default function CannonBlastGame() {
     engineRef.current = engine;
     
     // --- LÓGICA DE ESCALADO VISUAL ---
-    // Calculamos un factor de escala para que el juego siempre "quepa" verticalmente.
-    // Usamos una altura base de referencia (ej: 900px).
     const targetHeight = 900; 
-    const scale = Math.min(1, window.innerHeight / targetHeight); // Si la pantalla es más pequeña, scale < 1
+    const scale = Math.min(1, window.innerHeight / targetHeight); 
     game.current.viewScale = scale;
 
-    // Dimensiones "virtuales" del mundo físico
-    // Si la pantalla es pequeña, el mundo físico es más grande que la pantalla, y luego lo "encogemos" con scale.
     const width = window.innerWidth / scale;
     const height = window.innerHeight / scale;
     
