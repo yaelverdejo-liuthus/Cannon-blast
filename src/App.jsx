@@ -392,8 +392,10 @@ export default function CannonBlastGame() {
     const ground = Matter.Bodies.rectangle(width / 2, height + 50, width * 3, 200, { 
       isStatic: true, label: 'ground', friction: 1 
     });
-    const wallRight = Matter.Bodies.rectangle(width + 200, height / 2, 200, height * 3, { isStatic: true });
-    const wallLeft = Matter.Bodies.rectangle(-200, height / 2, 200, height * 3, { isStatic: true });
+    // Muro invisible ajustado EXACTAMENTE al borde derecho visible
+    // Ancho 200 -> Centro en width + 100 -> Borde izquierdo en width (Borde de pantalla)
+    const wallRight = Matter.Bodies.rectangle(width + 100, height / 2, 200, height * 3, { isStatic: true, label: 'wall' });
+    const wallLeft = Matter.Bodies.rectangle(-200, height / 2, 200, height * 3, { isStatic: true, label: 'wall' });
     
     // 2. PLATAFORMA ELEVADA
     const platformWidth = 500;
