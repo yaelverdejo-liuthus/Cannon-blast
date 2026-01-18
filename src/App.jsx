@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Matter from 'matter-js';
-import { Play, RotateCcw, Menu, Star, Volume2, Infinity, Trophy, ShieldAlert, Zap } from 'lucide-react';
+import { Play, RotateCcw, Menu, Star, Volume2, Infinity, Trophy, ShieldAlert, Zap, Smartphone, Maximize } from 'lucide-react';
 
 // --- CONSTANTES Y CONFIGURACIÓN ---
 
@@ -94,6 +94,7 @@ export default function CannonBlastGame() {
   const [gameState, setGameState] = useState('menu'); // menu, playing, levelSelect, won, lost, roundWon
   const [currentLevelId, setCurrentLevelId] = useState(1);
   const [gameMode, setGameMode] = useState('campaign'); // 'campaign' | 'infinite'
+  const [isLandscape, setIsLandscape] = useState(true); // Nuevo estado para orientación
   
   const [score, setScore] = useState(0);
   const [ammo, setAmmo] = useState(0);
@@ -108,9 +109,30 @@ export default function CannonBlastGame() {
   const engineRef = useRef(null);
   const renderReqRef = useRef(null);
   
-  // === FIX 1: Canvas Resize ===
+  // FIX: Referencia para controlar el timeout de derrota y poder cancelarlo
+  const gameOverTimeoutRef = useRef(null);
+  
+  // --- CONTROL DE PANTALLA Y ORIENTACIÓN ---
+  
+  // Función para solicitar pantalla completa y bloqueo horizontal
+  const enterGameMode = () => {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen().catch(err => console.log("Fullscreen blocked:", err));
+    }
+    // Intentar bloquear orientación (Funciona en Chrome Android / Web Apps)
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(err => console.log("Orientation lock failed/unsupported:", err));
+    }
+  };
+
   useEffect(() => {
-    const resizeCanvas = () => {
+    const checkOrientation = () => {
+      // Si el ancho es mayor que el alto, es landscape (o escritorio)
+      const isLand = window.innerWidth > window.innerHeight;
+      setIsLandscape(isLand);
+      
+      // Actualizar tamaño de canvas
       const canvas = canvasRef.current;
       if (canvas) {
         canvas.width = window.innerWidth;
@@ -120,10 +142,22 @@ export default function CannonBlastGame() {
       }
     };
     
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
   }, []);
+
+  // FIX: Limpiar timeout si salimos del estado de juego (ej: al menú o ganar)
+  useEffect(() => {
+    if (gameState !== 'playing' && gameOverTimeoutRef.current) {
+        clearTimeout(gameOverTimeoutRef.current);
+        gameOverTimeoutRef.current = null;
+    }
+  }, [gameState]);
   
   // Estado mutable del juego
   const game = useRef({
@@ -309,6 +343,12 @@ export default function CannonBlastGame() {
 
   // --- INICIALIZACIÓN DEL JUEGO ---
   const initLevel = useCallback((levelIdOrMode, roundNum = 1, currentAmmo = null) => {
+    // FIX: Limpiar cualquier timeout pendiente al iniciar un nivel
+    if (gameOverTimeoutRef.current) {
+      clearTimeout(gameOverTimeoutRef.current);
+      gameOverTimeoutRef.current = null;
+    }
+
     let startingAmmo = 0;
 
     if (gameMode === 'infinite') {
@@ -498,6 +538,13 @@ export default function CannonBlastGame() {
       
       const remainingTargets = engine.world.bodies.filter(b => b.label.startsWith('block'));
       if (remainingTargets.length === 0) {
+        
+        // FIX: Limpiar cualquier timeout de game over pendiente al ganar
+        if (gameOverTimeoutRef.current) {
+            clearTimeout(gameOverTimeoutRef.current);
+            gameOverTimeoutRef.current = null;
+        }
+
         setGameState(gameMode === 'infinite' ? 'roundWon' : 'won');
         playSound('win');
         
@@ -704,9 +751,13 @@ export default function CannonBlastGame() {
       const newAmmo = prev - 1;
       game.current.currentAmmoRef = newAmmo;
       if (newAmmo === 0) {
-        setTimeout(() => {
+        // FIX: Guardar el ID del timeout para poder cancelarlo si se gana antes de tiempo
+        gameOverTimeoutRef.current = setTimeout(() => {
           const enemies = Matter.Composite.allBodies(engineRef.current.world).filter(b => b.label.startsWith('block'));
-          if (enemies.length > 0) setGameState('lost');
+          // FIX: Doble chequeo de estado para evitar condiciones de carrera
+          if (enemies.length > 0) {
+             setGameState(current => current === 'playing' ? 'lost' : current);
+          }
         }, 5000);
       }
       return newAmmo;
@@ -747,6 +798,19 @@ export default function CannonBlastGame() {
 
   // --- COMPONENTES UI ---
 
+  // Nuevo componente para forzar landscape
+  if (!isLandscape) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black text-white flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300">
+        <Smartphone size={64} className="mb-6 animate-spin-slow text-yellow-400" />
+        <h2 className="text-3xl font-black mb-4">GIRA TU DISPOSITIVO</h2>
+        <p className="text-gray-300 text-lg max-w-md">
+          Para la mejor experiencia de destrucción, Cannon Blast debe jugarse en modo horizontal.
+        </p>
+      </div>
+    );
+  }
+
   const MainMenu = () => (
     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-orange-100/90 via-sky-200/90 to-emerald-100/90 backdrop-blur-sm p-4">
       <div className="bg-white/80 p-8 md:p-12 rounded-3xl shadow-2xl text-center max-w-2xl border border-white/50 backdrop-blur-md animate-in zoom-in duration-500">
@@ -756,7 +820,10 @@ export default function CannonBlastGame() {
         <p className="text-gray-600 text-xl md:text-2xl mb-12 font-medium">Física, Destrucción y Precisión</p>
         
         <button 
-          onClick={() => setGameState('levelSelect')}
+          onClick={() => {
+            enterGameMode();
+            setGameState('levelSelect');
+          }}
           className="group relative px-10 py-5 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 w-full md:w-auto"
         >
           <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-700 skew-x-12 opacity-0 group-hover:opacity-100"></div>
@@ -777,6 +844,7 @@ export default function CannonBlastGame() {
           {/* MODO INFINITO CARD */}
           <button
             onClick={() => {
+              enterGameMode();
               setGameMode('infinite');
               setRound(1);
               setGameState('playing');
@@ -803,6 +871,7 @@ export default function CannonBlastGame() {
             <button
               key={level.id}
               onClick={() => {
+                enterGameMode();
                 setGameMode('campaign');
                 setCurrentLevelId(level.id);
                 setGameState('playing');
@@ -952,7 +1021,7 @@ export default function CannonBlastGame() {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-gradient-to-b from-sky-300 to-sky-100 select-none font-sans">
+    <div className="relative w-screen h-screen overflow-hidden bg-gradient-to-b from-sky-300 to-sky-100 select-none font-sans touch-none">
       
       {/* --- CANVAS DE JUEGO --- */}
       <canvas
